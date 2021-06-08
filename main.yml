@@ -1,0 +1,40 @@
+---
+- hosts: 127.0.0.1
+  become: yes
+  remote_user: root
+  tasks: 
+  - name: Check if SSH unit file /etc/systemd/system/sshd.service exists
+    stat:
+      path: /etc/systemd/system/sshd.service
+    register: stat_sshd_service
+  - name: Check if SSH unit custom file /etc/ssh/sshd_config-CUSTOM exists
+    stat:
+      path: /etc/ssh/sshd_config-CUSTOM
+    register: stat_sshd_config_CUSTOM
+  - name: Copy ssh.service file to new path, if it doesn't exists already
+    command: cp -pa /usr/lib/systemd/system/sshd.service /etc/systemd/system/
+    when: stat_sshd_service.stat.exists == False
+  - name: create sshd_config-CUSTOM if it doesn't exists already
+    command: cp -pa /etc/ssh/sshd_config /etc/ssh/sshd_config-CUSTOM
+    when: stat_sshd_config_CUSTOM.stat.exists == False
+  - name: Change sshd config at SSH unit
+    lineinfile: dest=/etc/systemd/system/sshd.service
+              regexp="^ExecStart"
+              line="ExecStart=/usr/sbin/sshd -D $OPTIONS -f /etc/ssh/sshd_config-CUSTOM"
+              state=present
+    notify:
+    - Restart ssh
+  - name: Disallow root SSH access at sshd.service
+    lineinfile: dest=/etc/ssh/sshd_config-CUSTOM
+              regexp="^PermitRootLogin"
+              line="PermitRootLogin no"
+              state=present
+    notify:
+    - Reload and restart ssh
+  handlers:
+  - name: Reload and restart ssh
+    ansible.builtin.systemd:
+      state: restarted
+      daemon_reload: yes
+      name: sshd
+
